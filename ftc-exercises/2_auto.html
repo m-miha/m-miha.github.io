@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Exercise 2: Autonomous OpMode</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+pre{overflow-x:auto;font:13.5px/1.7 "JetBrains Mono",ui-monospace,Menlo,monospace;tab-size:4}
+pre i{font-style:normal}
+.c{color:#7b87a3}.k{color:#8a3fd1}.s{color:#0b7f5c}.n{color:#b5530a}.a{color:#9a6b00}
+pre input{font:inherit;color:inherit;background:none;border:0;border-bottom:2px solid #e0a800;border-radius:0;padding:0 .4ch;margin:0 1px;min-width:4ch}
+pre input.opt{border-bottom-style:dashed}
+pre input.ok{border-bottom-color:#0e8f62;color:#0e8f62}
+pre input.bad{border-bottom-color:#c93c3c}
+html[data-theme=dark]{color-scheme:dark}
+html[data-theme=dark] .c{color:#8a93a8}
+html[data-theme=dark] .k{color:#c79bff}
+html[data-theme=dark] .s{color:#7fd6a8}
+html[data-theme=dark] .n{color:#f2a65a}
+html[data-theme=dark] .a{color:#e6c35c}
+html[data-theme=dark] pre input.ok{border-bottom-color:#4cd68a;color:#4cd68a}
+html[data-theme=dark] pre input.bad{border-bottom-color:#ff7d7d}
+#win{display:none}
+#win.on{display:block}
+body.drag pre{outline:3px dashed #2f5bea}
+canvas{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:9;image-rendering:pixelated}
+</style>
+</head>
+<body>
+<button id="theme" style="position:fixed;top:10px;right:10px;z-index:5"></button>
+<main>
+  <h1>Exercise 2: Autonomous OpMode</h1>
+  <p>Fill in the blanks. Whitespace is ignored, but verbose code may not pass.</p>
+  <p>
+    <button id="reset">Reset</button>
+    <progress id="fill" max="100" value="0"></progress>
+    <span id="count"></span>
+  </p>
+  <p><b id="name"></b></p>
+  <pre id="code" aria-label="Code with blanks"></pre>
+  <p id="win" role="status"></p>
+</main>
+<canvas id="fx"></canvas>
+
+<script type="text/plain" id="src">
+package org.firstinspires.ftc.teamcode.exercises;
+
+import com.pedropathing.api.PoseFactory;
+import com.pedropathing.follower.Follower;
+import com.pedropathing.ivy.Command;
+import com.pedropathing.ivy.Scheduler;
+import com.pedropathing.math.Pose;
+import com.pedropathing.paths.Path;
+import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
+import com.qualcomm.robotcore.eventloop.opmode.OpMode;
+import com.qualcomm.robotcore.hardware.DcMotor;
+
+import static com.pedropathing.api.Paths.line;
+import static com.pedropathing.ivy.Scheduler.schedule;
+import static com.pedropathing.ivy.commands.Commands.instant;
+import static com.pedropathing.ivy.commands.Commands.waitMs;
+import static com.pedropathing.ivy.groups.Groups.sequential;
+import static com.pedropathing.ivy.pedro.PedroCommands.follow;
+
+import org.firstinspires.ftc.teamcode.PedroPathing.Constants;
+
+/**
+ * WELCOME TO THE AUTONOMOUS EXERCISE!! o(╹ڡ╹ )
+ * Much of this code is written for you! The parts that need completion are underlined in yellow. Dotted lines are optional.
+ * Please reach out if there's any questions.
+ * @Author m-miha on GitHub.
+ * @Email mjm2442@colubmia.edu
+ */
+
+/**
+ * For this exercise, you'll be writing an autonomous opmode using PedroPath and the Ivy command system.
+ * The robot will, from its starting position, drive to a scoring position, turn on a motor to fire pollen, then move to its park position.
+ *
+ */
+
+@Autonomous
+public class Auto extends OpMode {
+    private Follower follower;
+
+    /**
+     * This poseFactory object specifies that our poses will use degrees instead of radians.
+     */
+    private final PoseFactory poseFactory = PoseFactory.degrees();
+
+
+    private final Pose startPose = poseFactory.of(24, 24, 0);
+    private final Pose scorePose = poseFactory.of(48, 48, 90);
+    private final Pose parkPose = poseFactory.of(72, 48, 90);
+
+
+    private DcMotor flywheel;
+
+    // Path methods
+    private Path startToScore() {
+        return line(startPose, scorePose).linear(startPose, scorePose);
+    }
+
+    /**
+     * Construct the park path as a line with linear interpolation, moving us from our score position to our park position.
+     * See https://pedropathing.com/docs/pathing/guide/path-creation for Pedropath's path creation section.
+     */
+    private Path park(){
+        return {{line(scorePose, parkPose).linear(scorePose, parkPose)}};
+    }
+
+    /**
+     * Construct the following method to return a command for our autonomous routine. Commands string together path following with other arbitrary code you'd want executed in the middle of your
+     * paths. In this case, we want to drive to our score pose, set the flywheel power to 1, wait 500ms, turn the flywheel off (power 0), then drive to our
+     * park position.
+     *
+     * See Ivy's Utility Commands: https://pedropathing.com/docs/ivy/utilities-and-decorators
+     */
+    private Command autoRoutine() {
+        return sequential(
+                follow(follower, startToScore()),
+                instant(() -> {{flywheel.setPower(1);;flywheel.setPower(1.0)}}),
+                instant(() -> {{waitMs(500)}}),
+                instant(() -> {{flywheel.setPower(0);;flywheel.setPower(0.0)}}),
+                follow(follower, park())
+        );
+    }
+
+    @Override
+    public void init() {
+        Scheduler.reset();
+
+        follower = Constants.create(hardwareMap);
+        /**
+         * Instantiate the flywheel object with configuration name "flywheel"
+         */
+        flywheel = hardwareMap.get({{DcMotor.class, "flywheel"}});
+        follower.setPose(startPose);
+        follower.update();
+    }
+
+    @Override
+    public void start() {
+        /**
+         * Use the "schedule()" method to prepare our autonomous command.
+         */
+        schedule({{autoRoutine()}});
+    }
+
+    @Override
+    public void loop() {
+        follower.update();
+        Scheduler.execute();
+
+    }
+}
+</script>
+
+<script>
+const $ = s => document.querySelector(s);
+const KW = 'abstract|boolean|break|case|catch|class|const|continue|def|double|else|enum|extends|final|finally|float|for|function|if|implements|import|in|instanceof|int|interface|let|long|new|null|package|private|protected|public|return|static|super|switch|this|throw|throws|true|false|try|var|void|while';
+const RE = new RegExp('(\\/\\*[\\s\\S]*?\\*\\/|\\/\\/.*)|("(?:\\\\.|[^"\\\\\\n])*")|(@\\w+)|\\b(' + KW + ')\\b|\\b(\\d+(?:\\.\\d+)?)\\b', 'g');
+const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const hl = t => esc(t).replace(RE, (m, c, s, a, k, n) => `<i class="${c ? 'c' : s ? 's' : a ? 'a' : k ? 'k' : 'n'}">${m}</i>`);
+const norm = s => s.replace(/\s+/g, '');
+
+let blanks = [], cur = null, done = false, revealed = false;
+
+function load(text, name) {
+  cur = { text, name };
+  blanks = []; done = false; revealed = false;
+  const pre = $('#code');
+  pre.textContent = '';
+  const add = t => { if (t) { const s = document.createElement('span'); s.innerHTML = hl(t); pre.append(s); } };
+  const re = /\{\{(\??)([\s\S]*?)\}\}/g;
+  let last = 0, m;
+  while ((m = re.exec(text))) {
+    add(text.slice(last, m.index));
+    last = re.lastIndex;
+    const ans = m[2].split(';;').map(x => x.trim());
+    const el = document.createElement('input');
+    el.spellcheck = false; el.autocomplete = 'off'; el.autocapitalize = 'off';
+    el.setAttribute('aria-label', 'Blank ' + (blanks.length + 1) + (m[1] ? ' (optional)' : ''));
+    el.style.width = Math.max(4, Math.min(60, ans[0].length + 1)) + 'ch';
+    if (m[1]) el.className = 'opt';
+    const b = { el, ans, opt: !!m[1], ok: false };
+    el.oninput = () => check(b);
+    el.onblur = () => { if (el.value && !b.ok) el.classList.add('bad'); };
+    el.onkeydown = e => {
+      if (e.key === 'Enter') { e.preventDefault(); const nx = blanks[blanks.indexOf(b) + 1]; if (nx) nx.el.focus(); }
+    };
+    blanks.push(b); pre.append(el);
+  }
+  add(text.slice(last));
+  $('#name').textContent = name;
+  $('#win').className = '';
+  update();
+}
+
+function check(b, quiet) {
+  const was = b.ok;
+  b.ok = b.ans.some(a => norm(a) === norm(b.el.value));
+  b.el.classList.toggle('ok', b.ok);
+  b.el.classList.remove('bad');
+  if (b.ok && !was && !quiet) {
+    const r = b.el.getBoundingClientRect();
+    burst(r.left + r.width / 2, r.top, 60, 7, -Math.PI / 2, Math.PI * 1.2);
+  }
+  update();
+}
+
+function update() {
+  const req = blanks.filter(b => !b.opt), got = req.filter(b => b.ok).length;
+  const bonus = blanks.filter(b => b.opt);
+  $('#fill').value = req.length ? got / req.length * 100 : 0;
+  $('#count').textContent = req.length ? got + ' / ' + req.length : '0 blanks';
+  const win = $('#win');
+  if (!blanks.length) {
+    win.className = 'on';
+    win.textContent = 'No blanks found in this file. Wrap an answer in {{double braces}} to make one.';
+    return;
+  }
+  if (req.length && got === req.length) {
+    const bg = bonus.filter(b => b.ok).length;
+    win.className = 'on';
+    win.textContent = revealed ? 'Answers revealed. Press Reset to try again.'
+      : 'Nailed it! Every blank is filled in.' + (bonus.length ? ` Bonus: ${bg} / ${bonus.length} optional.` : '');
+    if (!done && !revealed) celebrate();
+    done = true;
+  } else { done = false; win.className = ''; }
+}
+
+$('#reset').onclick = () => cur && load(cur.text, cur.name);
+async function readFile(f) { if (f) load(await f.text(), f.name); }
+addEventListener('dragover', e => { e.preventDefault(); document.body.classList.add('drag'); });
+addEventListener('dragleave', e => { if (!e.relatedTarget) document.body.classList.remove('drag'); });
+addEventListener('drop', e => { e.preventDefault(); document.body.classList.remove('drag'); readFile(e.dataTransfer.files[0]); });
+
+/* ---- theme ---- */
+const root = document.documentElement, tb = $('#theme');
+function setTheme(t, save) {
+  root.dataset.theme = t;
+  tb.textContent = t === 'dark' ? 'Light mode' : 'Dark mode';
+  if (save) try { localStorage.setItem('theme', t); } catch (e) {}
+}
+let saved = null;
+try { saved = localStorage.getItem('theme'); } catch (e) {}
+setTheme(saved === 'dark' ? 'dark' : 'light');
+tb.onclick = () => setTheme(root.dataset.theme === 'dark' ? 'light' : 'dark', true);
+
+/* ---- confetti (pixelated: drawn at 1/5 resolution, scaled up with nearest-neighbour) ---- */
+const cv = $('#fx'), cx = cv.getContext('2d');
+const COLORS = ['#2f5bea', '#f5b800', '#0e8f62', '#e8466b', '#8a3fd1', '#18b8d9', '#ff7a1a'];
+const S = 5;
+let P = [], raf = 0;
+const fit = () => { cv.width = Math.ceil(innerWidth / S); cv.height = Math.ceil(innerHeight / S); };
+addEventListener('resize', fit); fit();
+
+function burst(x, y, n, pow, ang, spread) {
+  if (matchMedia('(prefers-reduced-motion:reduce)').matches) return;
+  for (let i = 0; i < n; i++) {
+    const a = ang + (Math.random() - .5) * spread, v = pow * (.4 + Math.random() * .8);
+    P.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, s: Math.random() < .7 ? 1 : 2, c: COLORS[i % COLORS.length] });
+  }
+  if (!raf) raf = requestAnimationFrame(tick);
+}
+function tick() {
+  cx.clearRect(0, 0, cv.width, cv.height);
+  P = P.filter(p => p.y < innerHeight + 30);
+  for (const p of P) {
+    p.vy += .22; p.vx *= .99; p.vy *= .99; p.x += p.vx; p.y += p.vy;
+    cx.fillStyle = p.c;
+    cx.fillRect(Math.round(p.x / S), Math.round(p.y / S), p.s, p.s);
+  }
+  raf = P.length ? requestAnimationFrame(tick) : 0;
+}
+function celebrate() {
+  const w = innerWidth, h = innerHeight;
+  burst(0, h, 320, 28, -Math.PI / 3, .9);
+  burst(w, h, 320, 28, -Math.PI * 2 / 3, .9);
+  for (let i = 0; i < 10; i++) setTimeout(() => burst(Math.random() * w, -10, 110, 4, Math.PI / 2, 1.8), 300 + i * 200);
+}
+
+/* ---- boot: ?src=path loads a file from the site, otherwise the built-in exercise ---- */
+(async () => {
+  const src = new URLSearchParams(location.search).get('src');
+  if (src) {
+    try {
+      const r = await fetch(src);
+      if (!r.ok) throw 0;
+      return load(await r.text(), src.split('/').pop());
+    } catch (e) { /* fall through to default */ }
+  }
+  load($('#src').textContent.replace(/^\n/, ''), 'Auto.java');
+})();
+</script>
+</body>
+</html>

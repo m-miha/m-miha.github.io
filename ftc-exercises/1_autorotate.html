@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Exercise 1: Autorotate</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+pre{overflow-x:auto;font:13.5px/1.7 "JetBrains Mono",ui-monospace,Menlo,monospace;tab-size:4}
+pre i{font-style:normal}
+.c{color:#7b87a3}.k{color:#8a3fd1}.s{color:#0b7f5c}.n{color:#b5530a}.a{color:#9a6b00}
+pre input{font:inherit;color:inherit;background:none;border:0;border-bottom:2px solid #e0a800;border-radius:0;padding:0 .4ch;margin:0 1px;min-width:4ch}
+pre input.opt{border-bottom-style:dashed}
+pre input.ok{border-bottom-color:#0e8f62;color:#0e8f62}
+pre input.bad{border-bottom-color:#c93c3c}
+html[data-theme=dark]{color-scheme:dark}
+html[data-theme=dark] .c{color:#8a93a8}
+html[data-theme=dark] .k{color:#c79bff}
+html[data-theme=dark] .s{color:#7fd6a8}
+html[data-theme=dark] .n{color:#f2a65a}
+html[data-theme=dark] .a{color:#e6c35c}
+html[data-theme=dark] pre input.ok{border-bottom-color:#4cd68a;color:#4cd68a}
+html[data-theme=dark] pre input.bad{border-bottom-color:#ff7d7d}
+#win{display:none}
+#win.on{display:block}
+body.drag pre{outline:3px dashed #2f5bea}
+canvas{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:9;image-rendering:pixelated}
+</style>
+</head>
+<body>
+<button id="theme" style="position:fixed;top:10px;right:10px;z-index:5"></button>
+<main>
+  <h1>Exercise 1: Autorotate</h1>
+  <p>Fill in the blanks. Whitespace is ignored, but verbose code may not pass. Dotted lines are optional.</p>
+  <p>
+    <button id="reset">Reset</button>
+    <progress id="fill" max="100" value="0"></progress>
+    <span id="count"></span>
+  </p>
+  <p><b id="name"></b></p>
+  <pre id="code" aria-label="Code with blanks"></pre>
+  <p id="win" role="status"></p>
+</main>
+<canvas id="fx"></canvas>
+
+<script type="text/plain" id="src">
+package org.firstinspires.ftc.teamcode.exercises;
+
+import com.pedropathing.follower.Follower;
+import com.pedropathing.math.Pose;
+import com.qualcomm.robotcore.eventloop.opmode.OpMode;
+import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
+import com.qualcomm.robotcore.hardware.DcMotor;
+
+import org.firstinspires.ftc.teamcode.PedroPathing.Constants;
+
+@TeleOp(name = "Autorotate Exercise", group = "Iterative OpMode")
+
+
+/**
+ * WELCOME TO THE AUTO ROTATE EXERCISE!! o(╹ڡ╹ )
+ * Much of this code is written for you! The parts that need completion are underlined in yellow. Dotted lines are optional.
+ * Please reach out if there's any questions.
+ * @Author m-miha on GitHub.
+ * @Email mjm2442@colubmia.edu
+ */
+
+/**
+ * For this exercise, you'll be implementing an autorotation system in TeleOp. In this case,
+ * the robot should always be oriented towards the blue hives regardless of where the driver
+ * is. This will involve doing some basic trigonometry, and a basic
+ * proportional derivative controller. The derivative part is an optional challenge.
+ */
+
+public class AutoRotate extends OpMode {
+
+    private DcMotor leftDriveB = null;
+    private DcMotor leftDriveF = null;
+    private DcMotor rightDriveB = null;
+    private DcMotor rightDriveF = null;
+
+
+    /**
+     * Our Follower object tracks our rotation and heading on the field. This information is
+     * represented as a Pose, which consists of an X, Y, and heading value (rotation) in radians.
+     */
+    private Follower follower;
+
+    /**
+     * For simplicity's sake, there will only be one pose we want to lock on to, which is the center of the two
+     * blue hives listed below as targetPose.
+     */
+    private final Pose targetPose = new Pose(78, 73, 0); //heading arbitrary
+
+    /**
+     * PID constants that we'd tune on a real robot.
+     */
+    private final double kP = 0.2;
+    private final double kD = 0.0001;
+
+    private double lastError;
+
+    private double lastRuntime;
+
+
+
+    @Override
+    public void init() {
+        follower = Constants.createFollower(hardwareMap);
+        follower.setPose(new Pose(10, 10, 0));
+
+
+        leftDriveB = hardwareMap.get(DcMotor.class, "lr");
+        leftDriveF = hardwareMap.get(DcMotor.class, "lf");
+        rightDriveB = hardwareMap.get(DcMotor.class, "rr");
+        rightDriveF = hardwareMap.get(DcMotor.class, "rf");
+
+        leftDriveF.setDirection(DcMotor.Direction.REVERSE);
+        leftDriveB.setDirection(DcMotor.Direction.REVERSE);
+        rightDriveB.setDirection(DcMotor.Direction.FORWARD);
+        rightDriveF.setDirection(DcMotor.Direction.FORWARD);
+    }
+
+    @Override
+    public void start(){
+        resetRuntime();
+        lastRuntime = getRuntime();
+        lastError = 0;
+    }
+
+    @Override
+    public void loop() {
+
+        follower.localizer.update();
+        Pose pose = follower.pose();
+
+        /**
+         * We want to ask: How far does my robot have to rotate in order to face the blue hive? In order to do this, we need to take the difference between
+         * the angle our robot should be facing, and the angle our robot is currently facing.
+         *
+         * If we can establish a triangle from our robot to the blue hive, we can use tangent (specifically tangent inverse) to find the angle!
+         */
+
+        // Define the x and y distance between our target pose (the blue hive) and the robot.
+        // You'll need the .x() and .y() methods that belong to Pose objects.
+        double deltaX = {{targetPose.x() - pose.x()}};
+        double deltaY = {{targetPose.y() - pose.y()}};
+
+        // With the x and y lengths of our triangle, find the angle we need in order to face the blue hive.
+        // You'll need Math.atan2(y, x), an inverse tangent method.
+        double desiredAngle = {{Math.atan2(deltaY, deltaX)}};
+
+        // Our error is the difference between our desired angle and our current heading.
+        // You'll need the .heading() method that belongs to Pose objects.
+        double error = {{desiredAngle - pose.heading()}};
+
+        /**
+         * This code ensures we never rotate the long way around the unit circle to get to our angle.
+         */
+        if (error > Math.PI) {
+            error -= 2 * Math.PI;
+        } else if (error < -Math.PI) {
+            error += 2 * Math.PI;
+        }
+
+
+        /**
+         * Now that we know our error, we need to use it to actually apply power to our motors,
+         * through a proportional derivative controller.
+         */
+        // The proportional term is our constant kP multiplied by our error.
+        double pTerm = {{kP * error;;error * kP}};
+
+        double dTerm;
+        dTerm = 0; // stays 0 unless you do the derivative challenge below.
+        double currentRuntime = getRuntime();
+
+        /**
+         * OPTIONAL CHALLENGE: the derivative term is the rate of change of our error times kD.
+         * dT is the time since the last loop, and the change in error is (error - lastError).
+         */
+        double dT = {{?currentRuntime - lastRuntime}};
+        dTerm = {{?kD * (error - lastError) / dT}};
+
+
+        double rotate = pTerm + dTerm;
+        drive(-rotate);
+
+        lastError = error;
+        lastRuntime = currentRuntime;
+
+        telemetry.addData("X (in)", pose.x());
+        telemetry.addData("Y (in)", pose.y());
+        telemetry.addData("Heading (rad)", pose.heading());
+        telemetry.update();
+    }
+
+    /**
+     * Drives the robot field-centric with our calculated rotation power.
+     * @param rotate our calculated rotation power
+     */
+    public void drive(double rotate) {
+        double fieldX = gamepad1.left_stick_x;   // right on field
+        double fieldY = -gamepad1.left_stick_y;  // forward on field
+        double heading = follower.pose().heading();
+
+
+        double drive  = fieldX * Math.cos(heading)
+                + fieldY * Math.sin(heading);
+        double strafe = fieldX * Math.sin(heading)
+                - fieldY * Math.cos(heading);
+
+        double fLeftPow  = drive + rotate + strafe;
+        double bLeftPow  = drive + rotate - strafe;
+        double fRightPow = drive - rotate - strafe;
+        double bRightPow = drive - rotate + strafe;
+
+
+        double scale = Math.max(1.0, Math.max(
+                Math.max(Math.abs(fLeftPow), Math.abs(bLeftPow)),
+                Math.max(Math.abs(fRightPow), Math.abs(bRightPow))
+        ));
+
+        leftDriveF.setPower(fLeftPow / scale);
+        leftDriveB.setPower(bLeftPow / scale);
+        rightDriveF.setPower(fRightPow / scale);
+        rightDriveB.setPower(bRightPow / scale);
+    }
+}
+</script>
+
+<script>
+const $ = s => document.querySelector(s);
+const KW = 'abstract|boolean|break|case|catch|class|const|continue|def|double|else|enum|extends|final|finally|float|for|function|if|implements|import|in|instanceof|int|interface|let|long|new|null|package|private|protected|public|return|static|super|switch|this|throw|throws|true|false|try|var|void|while';
+const RE = new RegExp('(\\/\\*[\\s\\S]*?\\*\\/|\\/\\/.*)|("(?:\\\\.|[^"\\\\\\n])*")|(@\\w+)|\\b(' + KW + ')\\b|\\b(\\d+(?:\\.\\d+)?)\\b', 'g');
+const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const hl = t => esc(t).replace(RE, (m, c, s, a, k, n) => `<i class="${c ? 'c' : s ? 's' : a ? 'a' : k ? 'k' : 'n'}">${m}</i>`);
+const norm = s => s.replace(/\s+/g, '');
+
+let blanks = [], cur = null, done = false, revealed = false;
+
+function load(text, name) {
+  cur = { text, name };
+  blanks = []; done = false; revealed = false;
+  const pre = $('#code');
+  pre.textContent = '';
+  const add = t => { if (t) { const s = document.createElement('span'); s.innerHTML = hl(t); pre.append(s); } };
+  const re = /\{\{(\??)([\s\S]*?)\}\}/g;
+  let last = 0, m;
+  while ((m = re.exec(text))) {
+    add(text.slice(last, m.index));
+    last = re.lastIndex;
+    const ans = m[2].split(';;').map(x => x.trim());
+    const el = document.createElement('input');
+    el.spellcheck = false; el.autocomplete = 'off'; el.autocapitalize = 'off';
+    el.setAttribute('aria-label', 'Blank ' + (blanks.length + 1) + (m[1] ? ' (optional)' : ''));
+    el.style.width = Math.max(4, Math.min(60, ans[0].length + 1)) + 'ch';
+    if (m[1]) el.className = 'opt';
+    const b = { el, ans, opt: !!m[1], ok: false };
+    el.oninput = () => check(b);
+    el.onblur = () => { if (el.value && !b.ok) el.classList.add('bad'); };
+    el.onkeydown = e => {
+      if (e.key === 'Enter') { e.preventDefault(); const nx = blanks[blanks.indexOf(b) + 1]; if (nx) nx.el.focus(); }
+    };
+    blanks.push(b); pre.append(el);
+  }
+  add(text.slice(last));
+  $('#name').textContent = name;
+  $('#win').className = '';
+  update();
+}
+
+function check(b, quiet) {
+  const was = b.ok;
+  b.ok = b.ans.some(a => norm(a) === norm(b.el.value));
+  b.el.classList.toggle('ok', b.ok);
+  b.el.classList.remove('bad');
+  if (b.ok && !was && !quiet) {
+    const r = b.el.getBoundingClientRect();
+    burst(r.left + r.width / 2, r.top, 60, 7, -Math.PI / 2, Math.PI * 1.2);
+  }
+  update();
+}
+
+function update() {
+  const req = blanks.filter(b => !b.opt), got = req.filter(b => b.ok).length;
+  const bonus = blanks.filter(b => b.opt);
+  $('#fill').value = req.length ? got / req.length * 100 : 0;
+  $('#count').textContent = req.length ? got + ' / ' + req.length : '0 blanks';
+  const win = $('#win');
+  if (!blanks.length) {
+    win.className = 'on';
+    win.textContent = 'No blanks found in this file. Wrap an answer in {{double braces}} to make one.';
+    return;
+  }
+  if (req.length && got === req.length) {
+    const bg = bonus.filter(b => b.ok).length;
+    win.className = 'on';
+    win.textContent = revealed ? 'Answers revealed. Press Reset to try again.'
+      : 'Nailed it! Every blank is filled in.' + (bonus.length ? ` Bonus: ${bg} / ${bonus.length} optional.` : '');
+    if (!done && !revealed) celebrate();
+    done = true;
+  } else { done = false; win.className = ''; }
+}
+
+$('#reset').onclick = () => cur && load(cur.text, cur.name);
+async function readFile(f) { if (f) load(await f.text(), f.name); }
+addEventListener('dragover', e => { e.preventDefault(); document.body.classList.add('drag'); });
+addEventListener('dragleave', e => { if (!e.relatedTarget) document.body.classList.remove('drag'); });
+addEventListener('drop', e => { e.preventDefault(); document.body.classList.remove('drag'); readFile(e.dataTransfer.files[0]); });
+
+/* ---- theme ---- */
+const root = document.documentElement, tb = $('#theme');
+function setTheme(t, save) {
+  root.dataset.theme = t;
+  tb.textContent = t === 'dark' ? 'Light mode' : 'Dark mode';
+  if (save) try { localStorage.setItem('theme', t); } catch (e) {}
+}
+let saved = null;
+try { saved = localStorage.getItem('theme'); } catch (e) {}
+setTheme(saved === 'dark' ? 'dark' : 'light');
+tb.onclick = () => setTheme(root.dataset.theme === 'dark' ? 'light' : 'dark', true);
+
+/* ---- confetti (pixelated: drawn at 1/5 resolution, scaled up with nearest-neighbour) ---- */
+const cv = $('#fx'), cx = cv.getContext('2d');
+const COLORS = ['#2f5bea', '#f5b800', '#0e8f62', '#e8466b', '#8a3fd1', '#18b8d9', '#ff7a1a'];
+const S = 5;
+let P = [], raf = 0;
+const fit = () => { cv.width = Math.ceil(innerWidth / S); cv.height = Math.ceil(innerHeight / S); };
+addEventListener('resize', fit); fit();
+
+function burst(x, y, n, pow, ang, spread) {
+  if (matchMedia('(prefers-reduced-motion:reduce)').matches) return;
+  for (let i = 0; i < n; i++) {
+    const a = ang + (Math.random() - .5) * spread, v = pow * (.4 + Math.random() * .8);
+    P.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, s: Math.random() < .7 ? 1 : 2, c: COLORS[i % COLORS.length] });
+  }
+  if (!raf) raf = requestAnimationFrame(tick);
+}
+function tick() {
+  cx.clearRect(0, 0, cv.width, cv.height);
+  P = P.filter(p => p.y < innerHeight + 30);
+  for (const p of P) {
+    p.vy += .22; p.vx *= .99; p.vy *= .99; p.x += p.vx; p.y += p.vy;
+    cx.fillStyle = p.c;
+    cx.fillRect(Math.round(p.x / S), Math.round(p.y / S), p.s, p.s);
+  }
+  raf = P.length ? requestAnimationFrame(tick) : 0;
+}
+function celebrate() {
+  const w = innerWidth, h = innerHeight;
+  burst(0, h, 320, 28, -Math.PI / 3, .9);
+  burst(w, h, 320, 28, -Math.PI * 2 / 3, .9);
+  for (let i = 0; i < 10; i++) setTimeout(() => burst(Math.random() * w, -10, 110, 4, Math.PI / 2, 1.8), 300 + i * 200);
+}
+
+/* ---- boot: ?src=path loads a file from the site, otherwise the built-in exercise ---- */
+(async () => {
+  const src = new URLSearchParams(location.search).get('src');
+  if (src) {
+    try {
+      const r = await fetch(src);
+      if (!r.ok) throw 0;
+      return load(await r.text(), src.split('/').pop());
+    } catch (e) { /* fall through to default */ }
+  }
+  load($('#src').textContent.replace(/^\n/, ''), 'AutoRotate.java');
+})();
+</script>
+</body>
+</html>
